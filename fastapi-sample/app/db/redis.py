@@ -1,4 +1,5 @@
 import redis.asyncio as redis
+import time
 from app.core.config import settings
 from app.core.logger import get_logger
 
@@ -41,3 +42,38 @@ class RedisClient:
         if cls._client:
             await cls._client.close()
             logger.info("redis.py => close() => Redis connection closed")
+
+    @classmethod
+    async def blacklist_token(cls, jti: str, exp: int):
+        """
+        Add token to blacklist until it expires
+        """
+        client = cls.get_client()
+
+        ttl = exp - int(time.time())
+        if ttl <= 0:
+            return
+
+        key = f"bl:{jti}"
+
+        try:
+            await client.setex(key, ttl, "1")
+            logger.info(f"Token blacklisted: {jti}")
+        except Exception as e:
+            logger.error(f"Failed to blacklist token {jti}: {e}")
+
+    @classmethod
+    async def is_blacklisted(cls, jti: str) -> bool:
+        """
+        Check if token is blacklisted
+        """
+        client = cls.get_client()
+
+        key = f"bl:{jti}"
+
+        try:
+            result = await client.exists(key)
+            return result == 1
+        except Exception as e:
+            logger.error(f"Failed to check blacklist for {jti}: {e}")
+            return False
